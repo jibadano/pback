@@ -26,6 +26,6 @@ server.createGraphQLServerOptions = req => ({
 
 server.applyMiddleware({ app, path: '/graphql' })
 
-app.listen(4000, '0.0.0.0', () => {
+app.listen(process.env.PORT, process.env.HOST, () => {
   console.log(`🚀  Server ready at 4000 `)
 })
