@@ -3,7 +3,7 @@ const { Poll, User } = require('../model')
 const { Types } = require('mongoose')
 const { ObjectId } = Types
 
-const PAGE_SIZE = -2
+const PAGE_SIZE = 2
 
 const typeDefs = gql`
   extend type Query {
@@ -22,6 +22,8 @@ const typeDefs = gql`
 
   type Comments {
     page: Int,
+    size: Int,
+    hasMore: Boolean,
     list: [Comment]
   }
 `
@@ -30,8 +32,11 @@ const resolvers = {
   Query: {
     comments: async (obj, { _id, page = 1 }) => {
       const result = { page, list: [] }
-      let poll = await Poll.findOne({ _id }).select('comments').slice('comments', page * PAGE_SIZE).exec()
-      if (poll) result.list = poll.comments
+      const count = page * PAGE_SIZE
+      let poll = await Poll.findOne({ _id }).select('comments').slice('comments', -(count + 1)).exec()
+      if (poll) result.list = poll.comments.slice(1, count + 1)
+      result.hasMore = poll.comments.length > count
+      result.size = PAGE_SIZE
       return result
     }
   },

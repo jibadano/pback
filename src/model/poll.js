@@ -18,7 +18,22 @@ const Poll = new Schema({
     text: String,
     date: { type: Date, default: Date.now },
     user: { type: String, ref: 'User' }
-  }]
+  }],
+  categories: [String]
+})
+
+Poll.pre('save', function (next) {
+  const categories = []
+  const question = this.question || ''
+  question.split(/[ \n\t]/)
+    .filter(c => c.includes('#') && !c.endsWith('#'))
+    .forEach(c => {
+      const category = c.split('#')[1]
+      if (!categories.includes(category))
+        categories.push(category)
+    })
+  this.categories = categories.length ? categories : null
+  next()
 })
 
 /* // a setter

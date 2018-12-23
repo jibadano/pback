@@ -1,5 +1,4 @@
 const { Schema } = require('mongoose')
-const { ObjectId } = Schema.Types
 
 const User = new Schema({
   _id: {
@@ -14,8 +13,10 @@ const User = new Schema({
   friends: [{ type: String, ref: 'User' }],
   firstName: { type: String },
   lastName: { type: String },
+  avatar: { type: String },
   created: { type: Date, default: Date.now },
-  password: { type: String, required: true }
+  password: { type: String, required: true },
+  admin: Boolean
 })
 
 /* // a setter

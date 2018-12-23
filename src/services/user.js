@@ -1,13 +1,14 @@
 const { gql, AuthenticationError } = require('apollo-server')
-const { User } = require('../model')
+const { User, Poll } = require('../model')
 const jsonwebtoken = require('jsonwebtoken')
+const get = require('lodash/get')
 
 const typeDefs = gql`
 
   extend type Query {
     user(_id:ID): User
     me: Session
-    validateEmail(_id:ID!): Boolean
+    exists(_id:ID): Boolean
   }
 
   extend type Mutation {
@@ -20,44 +21,86 @@ const typeDefs = gql`
 
   type User {
     _id: ID!
-    avatar:String,
+    avatar:String
     firstName: String
     lastName: String
+    contrast: Contrast
   }
 
   type Session {
     user: User
     token: String
   }
+
+  scalar Contrast
 `
 const resolvers = {
   Query: {
-    user: (_, args) => User.findOne(args).exec(),
-    me: (obj, args, { session }, last) => {
-      if (!session) return null
-      let user = session.user
-      if (!user) return null
-      return { user, token: sign(user) }
+    user: async (_, { _id }, { session }) => {
+      const user = await User.findOne({ _id }).exec()
+      if (!user || session.user._id === _id) return user
+
+      return Poll.aggregate([
+        { $unwind: '$categories' },
+        {
+          $facet: {
+            "interests": [
+              { $group: { _id: '$categories', count: { $sum: 1 } } },
+              { $sort: { count: -1 } }
+            ],
+            "userInterests": [
+              { $match: { "options.users": session.user._id } },
+              { $group: { _id: '$categories', count: { $sum: 1 } } },
+              { $sort: { count: -1 } }],
+            "comparingInterests": [
+              { $match: { "options.users": _id } },
+              { $group: { _id: '$categories', count: { $sum: 1 } } },
+              { $sort: { count: -1 } }],
+            "commonInterests": [
+              { $match: { $and: [{ "options.users": session.user._id }, { "options.users": _id }] } },
+              { $group: { _id: '$categories', count: { $sum: 1 } } },
+              { $sort: { count: -1 } }
+            ],
+            "commonVotes": [
+              { $unwind: "$options" },
+              { $match: { "options.users": { $all: [session.user._id, _id] } } },
+              { $group: { _id: '$categories', count: { $sum: 1 } } },
+              { $sort: { count: -1 } }
+            ]
+          }
+        }
+      ]).then(facets => {
+        const { interests, userInterests, comparingInterests, commonInterests, commonVotes } = facets[0]
+        const userInterestsCount = userInterests.reduce((acc, cur) => acc + cur.count, 0)
+        const comparingInterestsCount = comparingInterests.reduce((acc, cur) => acc + cur.count, 0)
+        const totalInterestsCount = userInterestsCount + comparingInterestsCount
+        contrast.interests = userInterests.map(f => ({ category: f._id, avg: f.count / userInterestsCount }))
+        contrast.commonInterests = commonInterests.map(f => ({category: f._id, avg: f.count/ totalInterestsCount}))
+      })
     },
-    validateEmail: (_, args) => User.findOne(args).exec().then(user => !Boolean(user))
+    me: (_, __, context) => {
+      const user = get(context, 'session.user')
+      return user && { user, token: sign(user) }
+    },
+    exists: (_, args) => User.findOne(args).exec().then(user => Boolean(user))
   },
   Mutation: {
-    login: async (obj, args, context, last) => {
+    login: async (_, args) => {
       const user = await User.findOne(args).select("_id").exec()
       if (!user) return new AuthenticationError("Email or password is invalid")
       return { user, token: sign(user) }
     },
-    signup: async (obj, args, context, info) => {
+    signup: async (_, args) => {
       let user = await new User(args).save()
       if (!user) return null
       return { user, token: sign(user) }
     },
-    forgot: (obj, args, context, info) => { console.log(args) },
-    updateUser: (obj, args, context, info) => User.updateOne({ _id: args._id }, args).exec(),
-    deleteUser: (obj, args, context, info) => User.deleteOne(args).exec(),
+    forgot: (_, args) => { console.log(args) },
+    updateUser: (_, { _id, ...update }) => User.updateOne({ _id }, update).exec(),
+    deleteUser: (_, args) => User.deleteOne(args).exec(),
   },
 }
 
-let sign = user => jsonwebtoken.sign({ user }, 'somesuperdupersecret', { expiresIn: '1y' })
+const sign = user => jsonwebtoken.sign({ user }, 'somesuperdupersecret', { expiresIn: '1y' })
 
 module.exports = { typeDefs, resolvers }

@@ -1,7 +1,7 @@
 const { gql } = require('apollo-server')
 const poll = require('./poll')
 const comment = require('./comment')
-
+const search = require('./search')
 const user = require('./user')
 
 const typeDefs = gql`
@@ -24,5 +24,5 @@ const resolvers = {
   },
 }
 
-exports.typeDefs = [typeDefs, poll.typeDefs, user.typeDefs,comment.typeDefs ]
-exports.resolvers = [resolvers, poll.resolvers, user.resolvers, comment.resolvers]
+exports.typeDefs = [typeDefs, poll.typeDefs, user.typeDefs, search.typeDefs, comment.typeDefs]
+exports.resolvers = [resolvers, poll.resolvers, user.resolvers, search.resolvers, comment.resolvers]

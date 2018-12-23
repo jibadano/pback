@@ -4,15 +4,21 @@ const bodyParser = require('body-parser')
 const jwt = require('express-jwt')
 const { ApolloServer } = require('apollo-server-express')
 const services = require('./services')
-
+const {auth, passport} = require('./auth')
 const app = express()
+
+app.use(passport.initialize())
+app.use(passport.session())
 app.use(bodyParser.json())
+app.use(auth)
 app.use(jwt({
   credentialsRequired: false,
   secret: 'somesuperdupersecret'
 }))
 
+
 const server = new ApolloServer(services)
+
 server.createGraphQLServerOptions = req => ({
   schema: server.schema,
   context: { session: req.user }
@@ -20,6 +26,6 @@ server.createGraphQLServerOptions = req => ({
 
 server.applyMiddleware({ app, path: '/graphql' })
 
-app.listen(4000, () => {
+app.listen(4000, '0.0.0.0', () => {
   console.log(`🚀  Server ready at 4000 `)
 })
