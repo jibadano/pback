@@ -3,9 +3,7 @@ const { Poll, User } = require('../model')
 
 const typeDefs = gql`
   extend type Query {
-    polls(categories:[String]): [Poll]
-    explore(categories:[String], users:[ID]): [Poll]
-    userPolls(user:ID, categories:[String]): [Poll]
+    polls(users:[ID], categories:[String]): [Poll]
   }
 
   extend type Mutation {
@@ -67,35 +65,13 @@ const pollMap = session => input => {
 
 const resolvers = {
   Query: {
-    polls: (_, { categories }, { session }) => {
-      const poll = { user: { $in: [session.user.friends, session.user._id] }, "$or": [{ "privacy.users": session.user._id }, { "user": session.user._id }, { "privacy.poll": false }] }
-      if (categories) poll.question = new RegExp('#' + categories.toString().replace(/,/g, "|#"))
+    polls: (_, { categories, users }, { session }) => {
+      if (categories) poll.$and = [
+        { "$or": [{ "privacy.users": session.user._id }, { "privacy.poll": false }] },
+        { "$or": categories.map(category => ({ categories: { $regex: `^${category}.*` } })) }
+      ]
+      else poll = { "$or": [{ "user": session.user._id }, { "privacy.users": session.user._id }, { "privacy.poll": false }]}
 
-      return Poll.find(poll)
-        .sort('-date')
-        .slice('comments', 1)
-        .limit(50)
-        .exec()
-        .then(pollDocs => pollDocs.map(pollMap(session)))
-    },
-    userPolls: (_, { user, categories }, { session }) => {
-      let poll = { user: session.user._id }
-
-      if (user)
-        poll = { user, "$or": [{ "privacy.users": session.user._id }, { "privacy.poll": false }] }
-
-      if (categories) poll.question = new RegExp('#' + categories.toString().replace(/,/g, "|#"))
-
-      return Poll.find(poll)
-        .sort('-date')
-        .slice('comments', 1)
-        .limit(50)
-        .exec()
-        .then(pollDocs => pollDocs.map(pollMap(session)))
-    },
-    explore: (_, { categories, users }, { session }) => {
-      const poll = { "$or": [{ "privacy.users": session.user._id }, { "privacy.poll": false }] }
-      if (categories) poll.question = new RegExp('#' + categories.toString().replace(/,/g, "|#"))
       if (users) poll.user = { "$in": users }
 
       return Poll.find(poll)

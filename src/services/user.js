@@ -38,44 +38,55 @@ const resolvers = {
   Query: {
     user: async (_, { _id }, { session }) => {
       const user = await User.findOne({ _id }).exec()
-      if (!user || session.user._id === _id) return user
+      if (!user) return user
 
       return Poll.aggregate([
-        { $unwind: '$categories' },
         {
           $facet: {
-            "interests": [
-              { $group: { _id: '$categories', count: { $sum: 1 } } },
-              { $sort: { count: -1 } }
-            ],
             "userInterests": [
-              { $match: { "options.users": session.user._id } },
-              { $group: { _id: '$categories', count: { $sum: 1 } } },
-              { $sort: { count: -1 } }],
-            "comparingInterests": [
+              { $unwind: '$categories' },
               { $match: { "options.users": _id } },
-              { $group: { _id: '$categories', count: { $sum: 1 } } },
-              { $sort: { count: -1 } }],
+              { $sortByCount: "$categories" }
+            ],
+            "userTotalVoted": [
+              { $match: { "options.users": _id } },
+              { $count: "total" }
+            ],
+            "userTotalPolls": [
+              { $match: { "user": _id } },
+              { $count: "total" }
+            ],
+            "myInterests": [
+              { $unwind: '$categories' },
+              { $match: { "options.users": session.user._id } },
+              { $sortByCount: "$categories" }
+            ],
+            "myTotalPolls": [
+              { $match: { "options.users": session.user._id } },
+              { $count: "total" }
+            ],
             "commonInterests": [
-              { $match: { $and: [{ "options.users": session.user._id }, { "options.users": _id }] } },
-              { $group: { _id: '$categories', count: { $sum: 1 } } },
-              { $sort: { count: -1 } }
+              { $unwind: '$categories' },
+              { $match: { $and: [{ "options.users": _id }, { "options.users": session.user._id }] } },
+              { $sortByCount: "$categories" }
             ],
             "commonVotes": [
+              { $unwind: '$categories' },
               { $unwind: "$options" },
-              { $match: { "options.users": { $all: [session.user._id, _id] } } },
-              { $group: { _id: '$categories', count: { $sum: 1 } } },
-              { $sort: { count: -1 } }
+              { $match: { "options.users": { $all: [_id, session.user._id] } } },
+              { $sortByCount: "$categories" }
             ]
           }
         }
       ]).then(facets => {
-        const { interests, userInterests, comparingInterests, commonInterests, commonVotes } = facets[0]
-        const userInterestsCount = userInterests.reduce((acc, cur) => acc + cur.count, 0)
-        const comparingInterestsCount = comparingInterests.reduce((acc, cur) => acc + cur.count, 0)
-        const totalInterestsCount = userInterestsCount + comparingInterestsCount
-        contrast.interests = userInterests.map(f => ({ category: f._id, avg: f.count / userInterestsCount }))
-        contrast.commonInterests = commonInterests.map(f => ({category: f._id, avg: f.count/ totalInterestsCount}))
+        const { userInterests, myInterests, commonInterests, userTotalPolls, userTotalVoted, commonVotes } = facets[0]
+        user.contrast = {
+          voted: userTotalVoted[0].total,
+          polls: userTotalPolls[0].total,
+          interests: userInterests.map(({ _id, count }) => ({ name: _id, interest: count / userTotalVoted[0].total })),
+          common: commonInterests.map(({ _id }) => ({ name: _id })),
+        }
+        return user
       })
     },
     me: (_, __, context) => {

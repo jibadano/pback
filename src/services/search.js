@@ -10,6 +10,7 @@ const typeDefs = gql`
     label: String
     value: String
     type: SearchType
+    count: Int
   }
 
   enum SearchType{
@@ -18,28 +19,34 @@ const typeDefs = gql`
   }
 `
 
-const categories = async term => Poll.aggregate([
-  { $unwind: "$categories" },
-  { $match: { "categories": { $regex: `^${term}.*` } } },
-  { $group: { _id: "$categories", count: { $sum: 1 } } },
-  { $sort: { count: -1 } },
-  { $limit: 30 }
-]).then(polls => polls.map(({ _id }) => ({ value: _id, label: _id, type: 'CATEGORY' })))
-
-
-const users = term => User.aggregate([
-  { $match: { _id: { $regex: `^${term}.*` } } },
-  { $project: { _id: 1 } },
-  { $limit: 30 }
-]).then(users => users.map(({ _id }) => ({ value: _id, label: _id, type: 'USER' })))
-
+const search = term => Poll.aggregate([
+  { $facet: {
+    "users":[
+         { $match: {user: { $regex: `^${term}.*` }} },
+         { $group:{_id:'$user', count:{$sum:1}}},
+         { $sort: {count:-1} },
+         { $limit: 5 }
+     ],
+     "categories":[
+         { $unwind: "$categories" },
+         { $match: {categories: { $regex: `^${term}.*` }} },
+         { $group: { _id: '$categories', count:{$sum:1}}},
+         { $sort: {count:-1} },
+         { $limit: 5 }
+     ]
+ }
+}
+]).then(searchResult => {
+  const users = searchResult[0].users.map(({ _id, count }) => ({ value: _id, label: _id, type: 'USER', count }))
+  const categories = searchResult[0].categories.map(({ _id }) => ({ value: _id, label: _id, type: 'CATEGORY' }))
+  return users.concat(categories)
+})
 
 const resolvers = {
   Query: {
     search: (_, { term }) => {
-      console.log({term});
       if (!term) return []
-      return Promise.all([users(term), categories(term)]).then(([users, categories]) => users.concat(categories))
+      return search(term)
     }
   }
 }
