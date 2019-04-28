@@ -1,9 +1,10 @@
 const { gql, ApolloError } = require("apollo-server");
 const { Poll, User } = require("../model");
+const PAGE_SIZE = 5;
 
 const typeDefs = gql`
   extend type Query {
-    polls(users: [ID], categories: [String]): [Poll]
+    polls(users: [ID], categories: [String], offset: Int): [Poll]
   }
 
   extend type Mutation {
@@ -83,7 +84,8 @@ const pollMap = session => input => {
 
 const resolvers = {
   Query: {
-    polls: (_, { categories, users }, { session }) => {
+    polls: (_, { categories, users, offset }, { session }) => {
+      let poll = {};
       if (categories)
         poll.$and = [
           {
@@ -112,7 +114,8 @@ const resolvers = {
       return Poll.find(poll)
         .sort("-date")
         .slice("comments", 1)
-        .limit(10)
+        .skip(offset || 0)
+        .limit(PAGE_SIZE)
         .exec()
         .then(pollDocs => pollDocs.map(pollMap(session)));
     }
